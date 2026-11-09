@@ -239,11 +239,25 @@ export const matchesNetworkEntry = (clientIp, entry) => {
 export const normalizeWifiLocation = (item = {}, index = 0) => {
   const source = item && typeof item === 'object' ? item : {}
   const { validEntries } = parseAllowedIpsInput(source.allowedIps ?? source.allowed_ips ?? [])
+  const rawLat = source.latitude ?? source.lat
+  const rawLng = source.longitude ?? source.lng
+  const latitude = rawLat !== undefined && rawLat !== null && rawLat !== '' && Number.isFinite(Number(rawLat))
+    ? Number(rawLat)
+    : null
+  const longitude = rawLng !== undefined && rawLng !== null && rawLng !== '' && Number.isFinite(Number(rawLng))
+    ? Number(rawLng)
+    : null
+  const radiusMeters = Number.isFinite(Number(source.radiusMeters ?? source.radius_meters)) && Number(source.radiusMeters ?? source.radius_meters) > 0
+    ? Number(source.radiusMeters ?? source.radius_meters)
+    : 100
   return {
     id: String(source.id || `wifi_${index + 1}`).trim(),
     name: String(source.name || '').trim(),
     ssid: String(source.ssid || '').trim(),
     address: String(source.address || '').trim(),
+    latitude,
+    longitude,
+    radiusMeters,
     allowedIps: validEntries,
     isActive: source.isActive !== false && source.is_active !== false
   }
@@ -254,7 +268,7 @@ export const normalizeWifiAttendanceSettings = (raw = {}) => {
   const rawLocations = Array.isArray(source.locations) ? source.locations : []
   const locations = rawLocations
     .map((loc, idx) => normalizeWifiLocation(loc, idx))
-    .filter((loc) => loc.name || loc.allowedIps.length > 0)
+    .filter((loc) => loc.name || loc.allowedIps.length > 0 || (loc.latitude !== null && loc.longitude !== null))
 
   return {
     enabled: Boolean(source.enabled),

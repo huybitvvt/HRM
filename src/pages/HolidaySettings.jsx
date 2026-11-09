@@ -26,7 +26,7 @@ import './HolidaySettings.css'
 const TABS = [
   { id: 'holidays', label: 'Cài đặt ngày lễ', icon: 'fas fa-calendar-day' },
   { id: 'shifts', label: 'Cài đặt ca', icon: 'fas fa-clock' },
-  { id: 'wifi', label: 'Chấm công Wi-Fi', icon: 'fas fa-wifi' },
+  { id: 'wifi', label: 'Chấm công Wi-Fi & GPS', icon: 'fas fa-wifi' },
   { id: 'penalties', label: 'Cài đặt Nội dung phạt và mức phạt', icon: 'fas fa-file-invoice-dollar' },
   { id: 'leave', label: 'Cài đặt phép', icon: 'fas fa-calendar-alt' }
 ]
@@ -34,7 +34,7 @@ const TABS = [
 const TAB_COPY = {
   holidays: 'Khai báo ngày lễ/ngày nghỉ để hiển thị chính xác trên Bảng Công.',
   shifts: 'Cài giờ chuẩn từng ca. Báo cáo đi muộn/về sớm dùng ca của từng nhân viên.',
-  wifi: 'Đăng ký IP mạng Wi-Fi văn phòng/bưu cục để nhân viên chấm công online bằng mạng công ty.',
+  wifi: 'Đăng ký IP mạng Wi-Fi và tọa độ GPS văn phòng/bưu cục để nhân viên chấm công online.',
   penalties: 'Mức phạt dùng khi nạp Bảng phạt từ chấm công. Muộn/sớm: 2 lần đầu mỗi lần <15p miễn phạt; từ lần 3 hoặc có lần ≥15p thì tổng <30p phạt 50.000đ, ≥30p phạt 100.000đ. Công chỉ trừ khi muộn+sớm ≥60 phút trong ngày.',
   leave: 'Thiết lập tổng số ngày phép năm cho mỗi nhân sự.'
 }
@@ -44,6 +44,9 @@ const EMPTY_WIFI_FORM = {
   name: '',
   ssid: '',
   address: '',
+  latitude: '',
+  longitude: '',
+  radiusMeters: '100',
   allowedIpsText: '',
   isActive: true
 }
@@ -73,6 +76,7 @@ function HolidaySettings() {
   const [editingWifiId, setEditingWifiId] = useState(null)
   const [networkInfo, setNetworkInfo] = useState({ ip: null, isPublic: false, matchedLocation: null })
   const [detectingIp, setDetectingIp] = useState(false)
+  const [locatingGps, setLocatingGps] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -144,12 +148,59 @@ function HolidaySettings() {
     setNotice(`Đã điền IP mạng hiện tại (${status.ip}). Hãy kiểm tra tên điểm Wi-Fi rồi bấm Thêm/Cập nhật và Lưu cài đặt.`)
   }
 
+  const handleCaptureCurrentGps = async () => {
+    setError('')
+    setNotice('')
+    if (!navigator.geolocation) {
+      setError('Trình duyệt hiện tại không hỗ trợ định vị GPS.')
+      return
+    }
+    setLocatingGps(true)
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        })
+      })
+      const lat = Number(pos.coords.latitude.toFixed(6))
+      const lng = Number(pos.coords.longitude.toFixed(6))
+      let detectedAddress = ''
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+          { headers: { 'Accept-Language': 'vi' } }
+        )
+        const json = await res.json()
+        if (json?.display_name) detectedAddress = json.display_name
+      } catch {
+        // Ignore reverse geocode failure
+      }
+      setWifiForm(prev => ({
+        ...prev,
+        latitude: String(lat),
+        longitude: String(lng),
+        address: prev.address.trim() || detectedAddress || `${lat}, ${lng}`
+      }))
+      setNotice(`Đã lấy vị trí GPS hiện tại (${lat}, ${lng} — sai số ~${Math.round(pos.coords.accuracy || 0)}m).`)
+    } catch (gpsErr) {
+      if (gpsErr?.code === 1) {
+        setError('Trình duyệt đã chặn quyền truy cập vị trí GPS. Vui lòng bật quyền Vị trí trên thanh địa chỉ trình duyệt rồi thử lại.')
+      } else {
+        setError(gpsErr?.message || 'Không lấy được vị trí GPS hiện tại. Vui lòng kiểm tra GPS/mạng rồi thử lại.')
+      }
+    } finally {
+      setLocatingGps(false)
+    }
+  }
+
   const handleUpsertWifiLocation = () => {
     setError('')
     setNotice('')
     const cleanName = wifiForm.name.trim()
     if (!cleanName) {
-      setError('Vui lòng nhập tên điểm Wi-Fi văn phòng (ví dụ: Bưu cục Hà Nội).')
+      setError('Vui lòng nhập tên điểm Wi-Fi / GPS văn phòng (ví dụ: Bưu cục Hà Nội).')
       return
     }
     const parsedIps = parseAllowedIpsInput(wifiForm.allowedIpsText)
@@ -157,8 +208,10 @@ function HolidaySettings() {
       setError(`IP/dải mạng không hợp lệ hoặc không phải IP public: ${parsedIps.invalidEntries.join(', ')}`)
       return
     }
-    if (parsedIps.validEntries.length === 0) {
-      setError('Vui lòng nhập ít nhất 1 địa chỉ IP public hoặc bấm "Lấy IP mạng hiện tại".')
+    const hasGpsCoords = wifiForm.latitude !== '' && wifiForm.longitude !== '' &&
+      Number.isFinite(Number(wifiForm.latitude)) && Number.isFinite(Number(wifiForm.longitude))
+    if (parsedIps.validEntries.length === 0 && !hasGpsCoords) {
+      setError('Vui lòng bấm "Lấy IP Wi-Fi hiện tại" hoặc "Lấy vị trí GPS hiện tại" trước khi lưu điểm chấm công.')
       return
     }
 
@@ -168,6 +221,9 @@ function HolidaySettings() {
       name: cleanName,
       ssid: wifiForm.ssid.trim(),
       address: wifiForm.address.trim(),
+      latitude: hasGpsCoords ? Number(wifiForm.latitude) : null,
+      longitude: hasGpsCoords ? Number(wifiForm.longitude) : null,
+      radiusMeters: Number(wifiForm.radiusMeters) > 0 ? Number(wifiForm.radiusMeters) : 100,
       allowedIps: parsedIps.validEntries,
       isActive: wifiForm.isActive !== false
     }
@@ -186,7 +242,7 @@ function HolidaySettings() {
 
     setWifiForm(EMPTY_WIFI_FORM)
     setEditingWifiId(null)
-    setNotice(`Đã ${editingWifiId ? 'cập nhật' : 'thêm'} điểm Wi-Fi "${cleanName}". Bấm "Lưu cài đặt" ở góc trên để áp dụng.`)
+    setNotice(`Đã ${editingWifiId ? 'cập nhật' : 'thêm'} điểm chấm công "${cleanName}". Bấm "Lưu cài đặt" ở góc trên để áp dụng.`)
   }
 
   const handleEditWifiLocation = location => {
@@ -198,6 +254,9 @@ function HolidaySettings() {
       name: location.name || '',
       ssid: location.ssid || '',
       address: location.address || '',
+      latitude: location.latitude != null ? String(location.latitude) : '',
+      longitude: location.longitude != null ? String(location.longitude) : '',
+      radiusMeters: String(location.radiusMeters || 100),
       allowedIpsText: (location.allowedIps || []).join('\n'),
       isActive: location.isActive !== false
     })
@@ -713,6 +772,15 @@ function HolidaySettings() {
                   </button>
                   <button
                     type="button"
+                    className="btn"
+                    onClick={handleCaptureCurrentGps}
+                    disabled={locatingGps}
+                  >
+                    <i className={`fas fa-location-dot${locatingGps ? ' fa-spin' : ''}`}></i>{' '}
+                    {locatingGps ? 'Đang lấy GPS...' : 'Lấy vị trí GPS hiện tại'}
+                  </button>
+                  <button
+                    type="button"
                     className="btn btn-primary"
                     onClick={handleCaptureCurrentIp}
                     disabled={detectingIp}
@@ -756,7 +824,7 @@ function HolidaySettings() {
               </div>
 
               <div className="holiday-wifi-form-card">
-                <h3>{editingWifiId ? 'Cập nhật điểm Wi-Fi văn phòng' : 'Thêm điểm Wi-Fi văn phòng / bưu cục'}</h3>
+                <h3>{editingWifiId ? 'Cập nhật điểm chấm công (Wi-Fi / GPS)' : 'Thêm điểm chấm công văn phòng / bưu cục (Wi-Fi & GPS)'}</h3>
                 <div className="holiday-wifi-form-grid">
                   <label>
                     <span>Tên điểm / Văn phòng *</span>
@@ -785,8 +853,37 @@ function HolidaySettings() {
                       placeholder="VD: Bưu cục Hà Nội / TP.HCM"
                     />
                   </label>
+                  <label>
+                    <span>Vĩ độ GPS (Latitude)</span>
+                    <input
+                      type="text"
+                      value={wifiForm.latitude}
+                      onChange={event => setWifiForm(prev => ({ ...prev, latitude: event.target.value }))}
+                      placeholder="VD: 21.028511"
+                    />
+                  </label>
+                  <label>
+                    <span>Kinh độ GPS (Longitude) & Bán kính (m)</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={wifiForm.longitude}
+                        onChange={event => setWifiForm(prev => ({ ...prev, longitude: event.target.value }))}
+                        placeholder="VD: 105.804817"
+                      />
+                      <input
+                        type="number"
+                        min={10}
+                        max={5000}
+                        value={wifiForm.radiusMeters}
+                        onChange={event => setWifiForm(prev => ({ ...prev, radiusMeters: event.target.value }))}
+                        placeholder="150m"
+                        title="Bán kính cho phép (m)"
+                      />
+                    </div>
+                  </label>
                   <label className="holiday-wifi-form-grid__full">
-                    <span>Danh sách IP Public hoặc prefix IPv6 (/48 đến /128) — mỗi dòng 1 mục *</span>
+                    <span>Danh sách IP Public hoặc prefix IPv6 (/48 đến /128) — mỗi dòng 1 mục</span>
                     <textarea
                       rows={3}
                       value={wifiForm.allowedIpsText}
@@ -819,17 +916,17 @@ function HolidaySettings() {
                     )}
                     <button type="button" className="btn btn-primary" onClick={handleUpsertWifiLocation}>
                       <i className={`fas ${editingWifiId ? 'fa-check' : 'fa-plus'}`}></i>{' '}
-                      {editingWifiId ? 'Cập nhật điểm Wi-Fi' : 'Thêm điểm Wi-Fi'}
+                      {editingWifiId ? 'Cập nhật điểm chấm công' : 'Thêm điểm chấm công'}
                     </button>
                   </div>
                 </div>
               </div>
 
               <div className="holiday-wifi-list">
-                <h3>Danh sách điểm Wi-Fi đã đăng ký ({wifiAttendance.locations.length})</h3>
+                <h3>Danh sách điểm chấm công đã đăng ký ({wifiAttendance.locations.length})</h3>
                 {wifiAttendance.locations.length === 0 ? (
                   <div className="holiday-settings-empty">
-                    Chưa có điểm Wi-Fi văn phòng nào. Hãy kết nối Wi-Fi công ty và bấm &ldquo;Lấy IP Wi-Fi hiện tại&rdquo;.
+                    Chưa có điểm chấm công nào. Hãy bấm &ldquo;Lấy IP Wi-Fi hiện tại&rdquo; hoặc &ldquo;Lấy vị trí GPS hiện tại&rdquo;.
                   </div>
                 ) : (
                   wifiAttendance.locations.map(item => {
@@ -840,6 +937,11 @@ function HolidaySettings() {
                           <div className="holiday-wifi-item__head">
                             <strong>{item.name}</strong>
                             {item.ssid && <span className="holiday-wifi-badge">SSID: {item.ssid}</span>}
+                            {Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && (
+                              <span className="holiday-wifi-badge">
+                                <i className="fas fa-location-dot"></i> GPS: {item.latitude.toFixed(5)}, {item.longitude.toFixed(5)} ({item.radiusMeters || 150}m)
+                              </span>
+                            )}
                             <span className={`holiday-wifi-badge ${item.isActive ? 'is-active' : 'is-inactive'}`}>
                               {item.isActive ? 'Đang bật' : 'Tạm tắt'}
                             </span>
@@ -863,7 +965,7 @@ function HolidaySettings() {
                           <button
                             type="button"
                             className="btn btn-icon"
-                            title="Xóa điểm Wi-Fi"
+                            title="Xóa điểm chấm công"
                             onClick={() => handleRemoveWifiLocation(item.id)}
                           >
                             <i className="fas fa-trash"></i>
