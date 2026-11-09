@@ -16,5 +16,5 @@ export const getCompanyNameForContext = (company, user) => {
     user?.company?.name
   ]
   const name = candidates.find(value => String(value || '').trim())
-  return String(name || 'SpeeGo Logistics').trim()
+  return String(name || 'Vận tải ECO').trim()
 }

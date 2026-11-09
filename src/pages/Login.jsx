@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { getEcoAppUrl } from '../utils/ecoLink'
 import { isAccountingUser, isCoreStaffUser } from '../utils/staffAccess'
 import './Login.css'
 
@@ -58,9 +59,9 @@ function Login() {
       <section className="system-login__form-panel">
         <div className="system-login__form-wrap">
           <div className="system-login__intro">
-            <img src="/speego-logo.png" alt="SpeeGo Logistics" />
+            <img src="/logo-express-exacting.png" alt="ECO Transport" />
             <h1>Đăng nhập hệ thống</h1>
-            <p>Hệ thống quản lý nhân sự SpeeGo</p>
+            <p>Hệ thống Nhân sự &amp; Chấm công — Vận tải ECO</p>
           </div>
 
           {error && <div className="system-login__error"><i className="fas fa-exclamation-circle"></i><span>{error}</span></div>}
@@ -108,18 +109,21 @@ function Login() {
             </button>
           </form>
 
-          <p className="system-login__employee-link">Nhân viên có thể đăng nhập tại đây hoặc <Link to="/employee-login">mở trang nhân viên</Link>.</p>
+          <p className="system-login__employee-link">
+            Nhân viên có thể đăng nhập tại đây hoặc <Link to="/employee-login">mở trang nhân viên</Link> ·{' '}
+            <a href={getEcoAppUrl()}>Về hệ thống Vận tải ECO</a>
+          </p>
         </div>
-        <footer>© 2026 SpeeGo Logistics HR Management System</footer>
+        <footer>© 2026 ECO Transport HR &amp; Attendance System</footer>
       </section>
 
-      <aside className="system-login__branding" aria-label="SpeeGo Logistics">
+      <aside className="system-login__branding" aria-label="ECO Transport">
         <div className="system-login__branding-content">
-          <div className="system-login__brand-logo"><img src="/speego-logo.png" alt="SpeeGo Logistics" /></div>
-          <h2>SPEEGO LOGISTICS</h2>
-          <p className="system-login__slogan">NHANH CHÓNG · CHÍNH XÁC</p>
+          <div className="system-login__brand-logo"><img src="/logo-express-exacting.png" alt="ECO Transport" /></div>
+          <h2>ECO TRANSPORT</h2>
+          <p className="system-login__slogan">EXPRESS &amp; EXACTING</p>
           <div className="system-login__accent"></div>
-          <p className="system-login__description">Hệ thống quản lý nhân sự tập trung, chuyên nghiệp và hiệu quả.</p>
+          <p className="system-login__description">Hệ thống quản lý nhân sự, chấm công trực tuyến và chấm công Wi-Fi văn phòng đồng bộ cùng Vận tải ECO.</p>
         </div>
       </aside>
     </main>

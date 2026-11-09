@@ -1,16 +1,16 @@
 :root {
-  /* Brand */
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
+  /* Brand — ECO Transport Blue & Slate */
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
   --primary-soft: #eff6ff;
-  --secondary: #ea580c;
-  --secondary-dark: #c2410c;
-  --accent: #ea580c;
+  --secondary: #1e40af;
+  --secondary-dark: #1e3a8a;
+  --accent: #0ea5e9;
 
   /* Surfaces */
-  --bg: #f6f8fb;
+  --bg: #f8fafc;
   --card: #ffffff;
-  --surface-muted: #f8fafc;
+  --surface-muted: #f1f5f9;
 
   /* Text */
   --text: #0f172a;
@@ -370,12 +370,80 @@ button, input, select, textarea {
 
 .brand img {
   width: 40px;
-  height: 32px;
-  border-radius: 8px;
+  height: 36px;
+  border-radius: 10px;
   object-fit: contain;
   background: #fff;
   padding: 3px;
   box-shadow: none;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.brand-text span {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.brand-text small {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.nav-item--eco-back {
+  margin: 4px 10px 10px;
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  color: #93c5fd !important;
+  font-weight: 700 !important;
+}
+
+.nav-item--eco-back i {
+  color: #60a5fa !important;
+}
+
+.nav-item--eco-back:hover {
+  background: rgba(59, 130, 246, 0.24) !important;
+  color: #ffffff !important;
+}
+
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.header-brand img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.header-eco-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  border: 1px solid #bfdbfe;
+  color: var(--primary-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .nav-item {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { getEcoAppUrl } from '../utils/ecoLink'
 import { getDefaultLandingPath } from '../utils/staffAccess'
 import './EmployeeLogin.css'
 
@@ -38,9 +39,9 @@ function EmployeeLogin() {
   return (
     <main className="employee-login">
       <section className="employee-login__card">
-        <img src="/speego-logo.png" alt="SpeeGo Logistics" />
+        <img src="/logo-express-exacting.png" alt="ECO Transport" />
         <h1>Đăng nhập nhân viên</h1>
-        <p>Đăng nhập để xem Bảng công của bạn</p>
+        <p>Chấm công Online / Wi-Fi &amp; Xem Bảng công Vận tải ECO</p>
         {error && <div className="employee-login__error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <label><span>Tên tài khoản</span><input type="text" value={account} onChange={event => setAccount(event.target.value)} placeholder="Tên đăng nhập" autoComplete="username" required /></label>
@@ -48,6 +49,7 @@ function EmployeeLogin() {
           <button type="submit" disabled={loading}>{loading ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
         </form>
         <Link to="/login">Đăng nhập quản trị</Link>
+        <a href={getEcoAppUrl()} style={{ marginTop: 10, fontSize: '0.88rem', color: '#64748b' }}>← Về hệ thống Vận tải ECO</a>
       </section>
     </main>
   )

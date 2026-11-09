@@ -1,3 +1,5 @@
+import { getEcoAppUrl } from '../utils/ecoLink'
+
 function Header({ menuOpen = false, onMenuToggle }) {
   return (
     <header className="header">
@@ -10,6 +12,14 @@ function Header({ menuOpen = false, onMenuToggle }) {
       >
         <i className={`fas ${menuOpen ? 'fa-times' : 'fa-bars'}`}></i>
       </button>
+      <div className="header-brand">
+        <img src="/logo-express-exacting.png" alt="ECO Transport" />
+        <span>ECO HR</span>
+      </div>
+      <a className="header-eco-link" href={getEcoAppUrl()}>
+        <i className="fas fa-truck-fast" aria-hidden="true"></i>
+        <span>Về ECO</span>
+      </a>
     </header>
   )
 }

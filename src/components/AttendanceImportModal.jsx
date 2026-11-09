@@ -2691,7 +2691,7 @@ function AttendanceImportModal({
                     <tr style={{ background: '#eee', position: 'sticky', top: 0, zIndex: 2 }}>
                       <th style={{ padding: '6px' }}>Tên trong file</th>
                       <th style={{ padding: '6px' }}>Bộ phận trong file</th>
-                      <th style={{ padding: '6px' }}>Hồ sơ SpeeGo</th>
+                      <th style={{ padding: '6px' }}>Hồ sơ ECO</th>
                       <th style={{ padding: '6px' }}>Kết quả</th>
                     </tr>
                   </thead>
@@ -2725,14 +2725,14 @@ function AttendanceImportModal({
                                 borderColor: group.selectedEmployeeId ? '#86efac' : '#fca5a5'
                               }}
                             >
-                              <option value="">-- Chọn nhân viên SpeeGo --</option>
+                              <option value="">-- Chọn nhân viên ECO --</option>
                               {canCreateEmployees && (
                                 (!previewData.isMonthlyMatrix && !previewData.isDetailedAttendanceList) ||
                                 group.candidates.length === 0
                               ) && (
                                 <option value="__create__">-- Tạo hồ sơ mới từ tên trong file --</option>
                               )}
-                              <option value="__skip__">-- Không có trong SpeeGo (bỏ qua) --</option>
+                              <option value="__skip__">-- Không có trong ECO (bỏ qua) --</option>
                               {(previewData.isMonthlyMatrix || previewData.isDetailedAttendanceList
                                 ? group.candidates.map(candidate => candidate.employee)
                                 : employeesForMatching).map(employee => (

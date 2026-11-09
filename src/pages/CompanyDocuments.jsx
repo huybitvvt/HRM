@@ -437,7 +437,7 @@ function CompanyDocuments() {
                   type="text"
                   value={form.name}
                   onChange={event => setForm(current => ({ ...current, name: event.target.value }))}
-                  placeholder="VD: Giấy phép ĐKKD SpeeGo"
+                  placeholder="VD: Giấy phép ĐKKD Vận tải ECO"
                   required
                 />
               </div>

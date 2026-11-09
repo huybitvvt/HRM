@@ -6,6 +6,11 @@ import { fbGet } from '../services/firebase'
 import { rebuildAttendanceMonthSummaryForDate } from '../services/attendanceMonthSummary'
 import { getCompanyIdForUser, getCompanyNameForContext } from '../utils/companyContext'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { getEcoAppUrl } from '../utils/ecoLink'
+import {
+  evaluateWifiAttendance,
+  fetchCurrentNetworkStatus
+} from '../utils/attendanceWifi'
 import {
   normalizeAttendanceShiftSettings,
   resolveAttendanceShift
@@ -107,8 +112,10 @@ function OnlineAttendance() {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
 
-  // 3. Cài đặt ca làm việc
+  // 3. Cài đặt ca làm việc & Trạng thái Wi-Fi văn phòng
   const [attendanceSettings, setAttendanceSettings] = useState(() => normalizeAttendanceShiftSettings())
+  const [networkStatus, setNetworkStatus] = useState(() => evaluateWifiAttendance({}, {}))
+  const [checkingNetwork, setCheckingNetwork] = useState(false)
 
   // Cập nhật đồng hồ mỗi giây
   useEffect(() => {
@@ -116,16 +123,30 @@ function OnlineAttendance() {
     return () => clearInterval(timer)
   }, [])
 
-  // Tải cài đặt ca và Cloudinary ban đầu
+  const refreshWifiStatus = useCallback(async (wifiConfig) => {
+    setCheckingNetwork(true)
+    try {
+      const status = await fetchCurrentNetworkStatus(wifiConfig, { supabase })
+      setNetworkStatus(status)
+      return status
+    } finally {
+      setCheckingNetwork(false)
+    }
+  }, [])
+
+  // Tải cài đặt ca và kiểm tra Wi-Fi ban đầu
   useEffect(() => {
     fbGet('hr/attendanceSettings/default')
       .then(settings => {
         const normalized = normalizeAttendanceShiftSettings(settings)
         setAttendanceSettings(normalized)
+        refreshWifiStatus(normalized.wifiAttendance)
       })
-      .catch(() => {})
+      .catch(() => {
+        refreshWifiStatus({})
+      })
 
-  }, [])
+  }, [refreshWifiStatus])
 
   // Camera management
   const startCamera = async () => {
@@ -306,21 +327,49 @@ function OnlineAttendance() {
     setNotice('')
 
     try {
-      // 1. Upload ảnh lên Cloudinary nếu có ảnh
+      if (!selectedShift?.shiftId || !selectedShift?.workDate) {
+        throw new Error('Chưa có ca làm việc được duyệt để chấm công.')
+      }
+
+      // 1. Kiểm tra lại kết nối Wi-Fi văn phòng tại thời điểm bấm nút
+      const latestNetwork = await refreshWifiStatus(attendanceSettings.wifiAttendance)
+      if (!latestNetwork.allowed) {
+        throw new Error(
+          latestNetwork.message ||
+            'Bạn chưa kết nối đúng Wi-Fi văn phòng đã đăng ký. Vui lòng kết nối Wi-Fi công ty rồi thử lại.'
+        )
+      }
+
+      // 2. Upload ảnh lên Cloudinary nếu có ảnh
       let uploadedPhotoUrl = ''
       if (photoPreview) {
         uploadedPhotoUrl = await uploadToCloudinary(photoPreview)
       }
 
-      // 2a. Lấy vị trí tại thời điểm chấm công (không chặn chấm công nếu thiếu vị trí)
-      const capturedLocation = await captureGeolocation()
-      if (!capturedLocation.error) {
-        capturedLocation.address = await reverseGeocode(capturedLocation.lat, capturedLocation.lng)
-      }
-      capturedLocation.device = describeDevice()
-
-      if (!selectedShift?.shiftId || !selectedShift?.workDate) {
-        throw new Error('Chưa có ca làm việc được duyệt để chấm công.')
+      // 3. Nếu đã xác thực qua Wi-Fi văn phòng thì ghi nhận thông tin Wi-Fi ngay, không bắt buộc chờ GPS
+      let capturedLocation
+      if (latestNetwork.matchedLocation) {
+        const matched = latestNetwork.matchedLocation
+        capturedLocation = {
+          verificationMethod: 'wifi',
+          wifiLocationId: matched.id,
+          wifiLocationName: matched.name,
+          wifiSsid: matched.ssid || '',
+          ip: latestNetwork.ip || null,
+          address: matched.address
+            ? `Wi-Fi: ${matched.name}${matched.ssid ? ` (${matched.ssid})` : ''} — ${matched.address}`
+            : `Wi-Fi: ${matched.name}${matched.ssid ? ` (${matched.ssid})` : ''}`,
+          at: new Date().toISOString(),
+          device: describeDevice()
+        }
+      } else {
+        capturedLocation = await captureGeolocation()
+        if (!capturedLocation.error) {
+          capturedLocation.address = await reverseGeocode(capturedLocation.lat, capturedLocation.lng)
+        }
+        capturedLocation.verificationMethod = 'gps'
+        capturedLocation.ip = latestNetwork.ip || null
+        capturedLocation.device = describeDevice()
       }
 
       // Chấm vào/ra trong cùng RPC để ảnh và vị trí gắn đúng từng lượt.
@@ -353,7 +402,7 @@ function OnlineAttendance() {
       try {
         await rebuildAttendanceMonthSummaryForDate(recordDate, {
           companyId: getCompanyIdForUser(user),
-          companyName: getCompanyNameForContext({ name: 'SpeeGo Logistics' }, user)
+          companyName: getCompanyNameForContext({ name: 'Vận tải ECO' }, user)
         })
       } catch (syncError) {
         console.warn('Đã chấm công nhưng chưa đồng bộ bảng công tháng:', syncError)
@@ -386,6 +435,9 @@ function OnlineAttendance() {
           </p>
         </div>
         <div className="oa-header-actions">
+          <a className="oa-btn-view oa-btn-view--eco" href={getEcoAppUrl()}>
+            <i className="fas fa-truck-fast" aria-hidden="true"></i> Về hệ thống ECO
+          </a>
           <Link className="oa-btn-view oa-btn-view--ghost" to="/lich-su-cham-cong">
             <i className="fas fa-clock-rotate-left" aria-hidden="true"></i> Lịch sử chấm công
           </Link>
@@ -395,8 +447,8 @@ function OnlineAttendance() {
         </div>
       </div>
 
-      {/* Hero: Đồng hồ thời gian thực */}
-      <div className="oa-dashboard-grid">
+      {/* Hero: Đồng hồ thời gian thực & Trạng thái Wi-Fi */}
+      <div className="oa-dashboard-grid oa-dashboard-grid--two">
         <div className="oa-clock-card">
           <div className="oa-card-label">ĐỒNG HỒ HỆ THỐNG (GIỜ VIỆT NAM)</div>
           <div className="oa-digital-clock">
@@ -411,6 +463,61 @@ function OnlineAttendance() {
             <div className="oa-shift-badge">
               {selectedShift?.name || userShift.name}: <strong>{standardIn} - {standardOut}</strong>
             </div>
+          </div>
+        </div>
+
+        <div className={`oa-wifi-card ${networkStatus.matchedLocation ? 'is-matched' : networkStatus.mode === 'wifi_blocked' ? 'is-blocked' : ''}`}>
+          <div className="oa-wifi-card__top">
+            <div className="oa-card-label">CHẤM CÔNG WI-FI VĂN PHÒNG</div>
+            <div className="oa-wifi-card__actions">
+              <button
+                type="button"
+                className="oa-wifi-refresh"
+                onClick={() => refreshWifiStatus(attendanceSettings.wifiAttendance)}
+                disabled={checkingNetwork}
+                title="Kiểm tra lại kết nối Wi-Fi"
+              >
+                <i className={`fas fa-rotate${checkingNetwork ? ' fa-spin' : ''}`} aria-hidden="true"></i>{' '}
+                {checkingNetwork ? 'Đang kiểm tra...' : 'Kiểm tra Wi-Fi'}
+              </button>
+              {isAdminOrManager && (
+                <Link className="oa-wifi-config-link" to="/holiday-settings?tab=wifi">
+                  <i className="fas fa-sliders" aria-hidden="true"></i> Cấu hình Wi-Fi
+                </Link>
+              )}
+            </div>
+          </div>
+
+          <div className="oa-wifi-card__body">
+            <div className="oa-wifi-status-line">
+              <span className="oa-wifi-icon">
+                <i className={`fas ${networkStatus.matchedLocation ? 'fa-wifi' : networkStatus.mode === 'wifi_blocked' ? 'fa-triangle-exclamation' : 'fa-signal'}`} aria-hidden="true"></i>
+              </span>
+              <div>
+                <div className="oa-wifi-status-title">
+                  {networkStatus.matchedLocation
+                    ? `Đã kết nối Wi-Fi: ${networkStatus.matchedLocation.name}${networkStatus.matchedLocation.ssid ? ` (${networkStatus.matchedLocation.ssid})` : ''}`
+                    : networkStatus.mode === 'wifi_blocked'
+                      ? 'Chưa kết nối Wi-Fi văn phòng đã đăng ký'
+                      : 'Chế độ chấm công Online & Wi-Fi'}
+                </div>
+                <div className="oa-wifi-status-sub">
+                  IP mạng hiện tại: <code>{networkStatus.ip || 'Đang xác định...'}</code>
+                  {networkStatus.matchedLocation && ' · Xác thực hợp lệ, không cần bật GPS'}
+                </div>
+              </div>
+            </div>
+
+            {networkStatus.mode === 'wifi_blocked' && networkStatus.activeLocations?.length > 0 && (
+              <div className="oa-wifi-allowed-list">
+                <span>Wi-Fi hợp lệ:</span>
+                {networkStatus.activeLocations.map(loc => (
+                  <span key={loc.id} className="oa-wifi-chip">
+                    {loc.name}{loc.ssid ? ` (${loc.ssid})` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -532,19 +639,27 @@ function OnlineAttendance() {
               <button
                 type="button"
                 className="oa-btn-submit oa-btn-checkin"
-                disabled={submitting || !selectedShift}
+                disabled={submitting || !selectedShift || networkStatus.mode === 'wifi_blocked'}
                 onClick={() => submit('in')}
               >
-                {submitting ? 'Đang gửi dữ liệu & tải ảnh...' : 'XÁC NHẬN CHECK-IN'}
+                {submitting
+                  ? 'Đang gửi dữ liệu & tải ảnh...'
+                  : networkStatus.mode === 'wifi_blocked'
+                    ? 'KẾT NỐI WI-FI VĂN PHÒNG ĐỂ CHECK-IN'
+                    : 'XÁC NHẬN CHECK-IN'}
               </button>
             ) : (
               <button
                 type="button"
                 className="oa-btn-submit oa-btn-checkout"
-                disabled={submitting || !selectedShift}
+                disabled={submitting || !selectedShift || networkStatus.mode === 'wifi_blocked'}
                 onClick={() => submit('out')}
               >
-                {submitting ? 'Đang gửi dữ liệu & tải ảnh...' : 'XÁC NHẬN CHECK-OUT'}
+                {submitting
+                  ? 'Đang gửi dữ liệu & tải ảnh...'
+                  : networkStatus.mode === 'wifi_blocked'
+                    ? 'KẾT NỐI WI-FI VĂN PHÒNG ĐỂ CHECK-OUT'
+                    : 'XÁC NHẬN CHECK-OUT'}
               </button>
             )}
           </div>

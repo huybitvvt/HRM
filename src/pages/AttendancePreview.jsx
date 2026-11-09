@@ -232,7 +232,7 @@ const groupRowsByDepartment = rows => {
 function AttendancePreview() {
   const { user } = useAuth()
   const companyId = useMemo(() => getCompanyIdForUser(user), [user])
-  const [companyInfo] = useState({ name: 'SpeeGo Logistics' })
+  const [companyInfo] = useState({ name: 'Vận tải ECO' })
   const companyName = useMemo(
     () => getCompanyNameForContext(companyInfo, user),
     [companyInfo, user]

@@ -1,12 +1,18 @@
 {
-  "name": "hr-management",
+  "name": "eco-hr-management",
   "version": "1.0.0",
-  "description": "SpeeGo Logistics - Quản Lý Nhân Sự",
+  "description": "Vận tải ECO - Hệ thống Quản Lý Nhân Sự & Chấm Công",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/utils/*.test.mjs"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.0",

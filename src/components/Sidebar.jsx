@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { getEcoAppUrl } from '../utils/ecoLink'
 import { isAccountingUser, isCoreStaffUser } from '../utils/staffAccess'
 
 function Sidebar({ open = false, onNavigate = () => {} }) {
@@ -83,9 +84,21 @@ function Sidebar({ open = false, onNavigate = () => {} }) {
   return (
     <aside className={`sidebar${open ? ' is-open' : ''}`}>
       <div className="brand">
-        <img src="/speego-logo.png" alt="SpeeGo Logistics" />
-        <span>SpeeGo HR</span>
+        <img src="/logo-express-exacting.png" alt="ECO Transport" />
+        <div className="brand-text">
+          <span>ECO Transport</span>
+          <small>Nhân sự &amp; Chấm công</small>
+        </div>
       </div>
+
+      <a
+        href={getEcoAppUrl()}
+        className="nav-item nav-item--eco-back"
+        onClick={handleNavClick}
+      >
+        <i className="fas fa-truck-fast"></i>
+        <span>Về hệ thống Vận tải ECO</span>
+      </a>
 
       <div className="sidebar-nav">
         {accountingOnly ? (

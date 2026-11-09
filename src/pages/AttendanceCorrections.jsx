@@ -58,7 +58,7 @@ function AttendanceCorrections() {
         try {
           await rebuildAttendanceMonthSummaryForDate(request.date, {
             companyId: getCompanyIdForUser(user),
-            companyName: getCompanyNameForContext({ name: 'SpeeGo Logistics' }, user)
+            companyName: getCompanyNameForContext({ name: 'Vận tải ECO' }, user)
           })
         } catch (syncError) {
           console.error('Đã duyệt yêu cầu nhưng chưa đồng bộ được bảng công tháng:', syncError)

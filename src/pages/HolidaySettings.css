@@ -280,9 +280,223 @@
   font-weight: 700;
 }
 
+.holiday-wifi-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.holiday-wifi-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.holiday-wifi-status.is-matched {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.holiday-wifi-status__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.holiday-wifi-status.is-matched .holiday-wifi-status__title {
+  color: #166534;
+}
+
+.holiday-wifi-status__meta {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.holiday-wifi-status__meta code,
+.holiday-wifi-item__ips code {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.holiday-wifi-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.holiday-wifi-toggles {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.holiday-wifi-toggles .holiday-settings-check {
+  margin-top: 0;
+  align-items: flex-start;
+}
+
+.holiday-wifi-toggles .holiday-settings-check span {
+  display: grid;
+  gap: 2px;
+}
+
+.holiday-wifi-toggles .holiday-settings-check small {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.holiday-wifi-form-card {
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.holiday-wifi-form-card h3,
+.holiday-wifi-list h3 {
+  margin: 0 0 12px;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.holiday-wifi-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.holiday-wifi-form-grid__full {
+  grid-column: 1 / -1;
+}
+
+.holiday-wifi-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.holiday-wifi-form-grid input,
+.holiday-wifi-form-grid textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.holiday-wifi-form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.holiday-wifi-form-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.holiday-wifi-list {
+  display: grid;
+  gap: 10px;
+}
+
+.holiday-wifi-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.holiday-wifi-item.is-matched {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.holiday-wifi-item__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.holiday-wifi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.holiday-wifi-badge.is-active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.holiday-wifi-badge.is-inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.holiday-wifi-badge.is-connected {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.holiday-wifi-item__addr {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.holiday-wifi-item__ips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.holiday-wifi-item__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 @media (max-width: 760px) {
   .holiday-settings-head,
-  .holiday-settings-item div {
+  .holiday-settings-item div,
+  .holiday-wifi-status,
+  .holiday-wifi-item {
     align-items: stretch;
     flex-direction: column;
   }
@@ -292,7 +506,8 @@
   .holiday-settings-session-grid,
   .holiday-settings-session,
   .holiday-settings-penalty-head,
-  .holiday-settings-penalty-row {
+  .holiday-settings-penalty-row,
+  .holiday-wifi-form-grid {
     grid-template-columns: 1fr;
   }
 

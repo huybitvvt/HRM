@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams } from 'react-router-dom'
 import LeaveSettingsPanel from '../components/LeaveSettingsPanel'
 import { fbGet, fbUpdate } from '../services/firebase'
+import { supabase } from '../services/supabase'
 import { getCompanyIdForUser } from '../utils/companyContext'
 import {
   ATTENDANCE_SHIFT_IDS,
@@ -10,6 +11,11 @@ import {
   getAttendanceShiftOptions,
   normalizeAttendanceShiftSettings
 } from '../utils/attendanceShift'
+import {
+  fetchCurrentNetworkStatus,
+  normalizeWifiAttendanceSettings,
+  parseAllowedIpsInput
+} from '../utils/attendanceWifi'
 import {
   createPenaltyCategory,
   DEFAULT_PENALTY_CATEGORIES,
@@ -20,6 +26,7 @@ import './HolidaySettings.css'
 const TABS = [
   { id: 'holidays', label: 'Cài đặt ngày lễ', icon: 'fas fa-calendar-day' },
   { id: 'shifts', label: 'Cài đặt ca', icon: 'fas fa-clock' },
+  { id: 'wifi', label: 'Chấm công Wi-Fi', icon: 'fas fa-wifi' },
   { id: 'penalties', label: 'Cài đặt Nội dung phạt và mức phạt', icon: 'fas fa-file-invoice-dollar' },
   { id: 'leave', label: 'Cài đặt phép', icon: 'fas fa-calendar-alt' }
 ]
@@ -27,8 +34,18 @@ const TABS = [
 const TAB_COPY = {
   holidays: 'Khai báo ngày lễ/ngày nghỉ để hiển thị chính xác trên Bảng Công.',
   shifts: 'Cài giờ chuẩn từng ca. Báo cáo đi muộn/về sớm dùng ca của từng nhân viên.',
+  wifi: 'Đăng ký IP mạng Wi-Fi văn phòng/bưu cục để nhân viên chấm công online bằng mạng công ty.',
   penalties: 'Mức phạt dùng khi nạp Bảng phạt từ chấm công. Muộn/sớm: 2 lần đầu mỗi lần <15p miễn phạt; từ lần 3 hoặc có lần ≥15p thì tổng <30p phạt 50.000đ, ≥30p phạt 100.000đ. Công chỉ trừ khi muộn+sớm ≥60 phút trong ngày.',
   leave: 'Thiết lập tổng số ngày phép năm cho mỗi nhân sự.'
+}
+
+const EMPTY_WIFI_FORM = {
+  id: '',
+  name: '',
+  ssid: '',
+  address: '',
+  allowedIpsText: '',
+  isActive: true
 }
 
 const sortHolidays = holidays => [...(holidays || [])]
@@ -52,6 +69,10 @@ function HolidaySettings() {
   const [selectedShiftId, setSelectedShiftId] = useState(ATTENDANCE_SHIFT_IDS.ADMINISTRATIVE)
   const [holidayDate, setHolidayDate] = useState('')
   const [holidayName, setHolidayName] = useState('')
+  const [wifiForm, setWifiForm] = useState(EMPTY_WIFI_FORM)
+  const [editingWifiId, setEditingWifiId] = useState(null)
+  const [networkInfo, setNetworkInfo] = useState({ ip: null, isPublic: false, matchedLocation: null })
+  const [detectingIp, setDetectingIp] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -76,6 +97,124 @@ function HolidaySettings() {
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  const refreshWifiNetwork = useCallback(async (wifiConfig = settings.wifiAttendance) => {
+    setDetectingIp(true)
+    try {
+      const status = await fetchCurrentNetworkStatus(wifiConfig, { supabase })
+      setNetworkInfo(status)
+      return status
+    } finally {
+      setDetectingIp(false)
+    }
+  }, [settings.wifiAttendance])
+
+  useEffect(() => {
+    if (activeTab === 'wifi') {
+      refreshWifiNetwork(settings.wifiAttendance)
+    }
+  }, [activeTab, refreshWifiNetwork, settings.wifiAttendance])
+
+  const wifiAttendance = useMemo(
+    () => normalizeWifiAttendanceSettings(settings.wifiAttendance),
+    [settings.wifiAttendance]
+  )
+
+  const updateWifiSettings = updater => {
+    setNotice('')
+    setSettings(current => {
+      const currentWifi = normalizeWifiAttendanceSettings(current.wifiAttendance)
+      const nextWifi = typeof updater === 'function' ? updater(currentWifi) : updater
+      return {
+        ...current,
+        wifiAttendance: normalizeWifiAttendanceSettings(nextWifi)
+      }
+    })
+  }
+
+  const handleCaptureCurrentIp = async () => {
+    setError('')
+    setNotice('')
+    const status = await refreshWifiNetwork(settings.wifiAttendance)
+    if (!status.ip || !status.isPublic) {
+      setError('Chưa nhận được IP public của mạng hiện tại (môi trường local loopback). Khi chạy trên hệ thống triển khai hoặc qua mạng Internet văn phòng, nút này sẽ tự động lấy IP public của Wi-Fi.')
+      return
+    }
+    setWifiForm(prev => ({ ...prev, allowedIpsText: status.ip }))
+    setNotice(`Đã điền IP mạng hiện tại (${status.ip}). Hãy kiểm tra tên điểm Wi-Fi rồi bấm Thêm/Cập nhật và Lưu cài đặt.`)
+  }
+
+  const handleUpsertWifiLocation = () => {
+    setError('')
+    setNotice('')
+    const cleanName = wifiForm.name.trim()
+    if (!cleanName) {
+      setError('Vui lòng nhập tên điểm Wi-Fi văn phòng (ví dụ: Bưu cục Hà Nội).')
+      return
+    }
+    const parsedIps = parseAllowedIpsInput(wifiForm.allowedIpsText)
+    if (parsedIps.invalidEntries.length > 0) {
+      setError(`IP/dải mạng không hợp lệ hoặc không phải IP public: ${parsedIps.invalidEntries.join(', ')}`)
+      return
+    }
+    if (parsedIps.validEntries.length === 0) {
+      setError('Vui lòng nhập ít nhất 1 địa chỉ IP public hoặc bấm "Lấy IP mạng hiện tại".')
+      return
+    }
+
+    const locationId = editingWifiId || wifiForm.id || `wifi_${Date.now().toString(36)}`
+    const nextItem = {
+      id: locationId,
+      name: cleanName,
+      ssid: wifiForm.ssid.trim(),
+      address: wifiForm.address.trim(),
+      allowedIps: parsedIps.validEntries,
+      isActive: wifiForm.isActive !== false
+    }
+
+    updateWifiSettings(current => {
+      const exists = current.locations.some(item => item.id === locationId)
+      const nextLocations = exists
+        ? current.locations.map(item => (item.id === locationId ? nextItem : item))
+        : [...current.locations, nextItem]
+      return {
+        ...current,
+        enabled: true,
+        locations: nextLocations
+      }
+    })
+
+    setWifiForm(EMPTY_WIFI_FORM)
+    setEditingWifiId(null)
+    setNotice(`Đã ${editingWifiId ? 'cập nhật' : 'thêm'} điểm Wi-Fi "${cleanName}". Bấm "Lưu cài đặt" ở góc trên để áp dụng.`)
+  }
+
+  const handleEditWifiLocation = location => {
+    setError('')
+    setNotice('')
+    setEditingWifiId(location.id)
+    setWifiForm({
+      id: location.id,
+      name: location.name || '',
+      ssid: location.ssid || '',
+      address: location.address || '',
+      allowedIpsText: (location.allowedIps || []).join('\n'),
+      isActive: location.isActive !== false
+    })
+  }
+
+  const handleRemoveWifiLocation = id => {
+    setError('')
+    setNotice('')
+    updateWifiSettings(current => ({
+      ...current,
+      locations: current.locations.filter(item => item.id !== id)
+    }))
+    if (editingWifiId === id) {
+      setEditingWifiId(null)
+      setWifiForm(EMPTY_WIFI_FORM)
+    }
+  }
 
   const holidays = sortHolidays(settings.holidays)
   const shiftOptions = getAttendanceShiftOptions(settings)
@@ -279,8 +418,50 @@ function HolidaySettings() {
     setError('')
     setNotice('')
     try {
+      let nextWifiAttendance = normalizeWifiAttendanceSettings(settings.wifiAttendance)
+      if (wifiForm.name.trim() || wifiForm.allowedIpsText.trim()) {
+        const cleanName = wifiForm.name.trim()
+        const parsedIps = parseAllowedIpsInput(wifiForm.allowedIpsText)
+        if (!cleanName) {
+          setActiveTab('wifi')
+          setError('Bạn đang nhập dở điểm Wi-Fi nhưng chưa điền Tên điểm Wi-Fi.')
+          setSaving(false)
+          return
+        }
+        if (parsedIps.invalidEntries.length > 0 || parsedIps.validEntries.length === 0) {
+          setActiveTab('wifi')
+          setError(
+            parsedIps.invalidEntries.length > 0
+              ? `IP không hợp lệ hoặc không phải IP public: ${parsedIps.invalidEntries.join(', ')}`
+              : 'Vui lòng nhập ít nhất 1 địa chỉ IP public cho điểm Wi-Fi đang điền.'
+          )
+          setSaving(false)
+          return
+        }
+        const locationId = editingWifiId || wifiForm.id || `wifi_${Date.now().toString(36)}`
+        const pendingItem = {
+          id: locationId,
+          name: cleanName,
+          ssid: wifiForm.ssid.trim(),
+          address: wifiForm.address.trim(),
+          allowedIps: parsedIps.validEntries,
+          isActive: wifiForm.isActive !== false
+        }
+        const exists = nextWifiAttendance.locations.some(item => item.id === locationId)
+        nextWifiAttendance = normalizeWifiAttendanceSettings({
+          ...nextWifiAttendance,
+          enabled: true,
+          locations: exists
+            ? nextWifiAttendance.locations.map(item => (item.id === locationId ? pendingItem : item))
+            : [...nextWifiAttendance.locations, pendingItem]
+        })
+        setWifiForm(EMPTY_WIFI_FORM)
+        setEditingWifiId(null)
+      }
+
       const payload = buildAttendanceShiftSettingsPayload({
         ...settings,
+        wifiAttendance: nextWifiAttendance,
         holidays: sortHolidays(settings.holidays)
       })
       await fbUpdate('hr/attendanceSettings/default', {
@@ -496,6 +677,204 @@ function HolidaySettings() {
                 Tự động tính tăng ca sau 480 phút (tắt để HR nhập từ Excel)
               </label>
             </>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'wifi' && (
+        <section className="holiday-settings-card" role="tabpanel">
+          {loading ? (
+            <div className="holiday-settings-empty">Đang tải cài đặt...</div>
+          ) : (
+            <div className="holiday-wifi-panel">
+              <div className={`holiday-wifi-status${networkInfo.matchedLocation ? ' is-matched' : ''}`}>
+                <div>
+                  <div className="holiday-wifi-status__title">
+                    <i className="fas fa-wifi" aria-hidden="true"></i>
+                    <strong>
+                      {networkInfo.matchedLocation
+                        ? `Đang kết nối Wi-Fi hợp lệ: ${networkInfo.matchedLocation.name}`
+                        : 'Trạng thái mạng hiện tại của bạn'}
+                    </strong>
+                  </div>
+                  <p className="holiday-wifi-status__meta">
+                    IP hiện tại: <code>{networkInfo.ip || 'Chưa xác định'}</code>
+                    {networkInfo.ip && !networkInfo.isPublic ? ' (Mạng nội bộ / Loopback)' : ''}
+                  </p>
+                </div>
+                <div className="holiday-wifi-status__actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => refreshWifiNetwork(settings.wifiAttendance)}
+                    disabled={detectingIp}
+                  >
+                    <i className={`fas fa-rotate${detectingIp ? ' fa-spin' : ''}`}></i> Kiểm tra mạng
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleCaptureCurrentIp}
+                    disabled={detectingIp}
+                  >
+                    <i className="fas fa-location-crosshairs"></i> Lấy IP Wi-Fi hiện tại
+                  </button>
+                </div>
+              </div>
+
+              <div className="holiday-wifi-toggles">
+                <label className="holiday-settings-check">
+                  <input
+                    type="checkbox"
+                    checked={wifiAttendance.enabled}
+                    onChange={event => updateWifiSettings(current => ({
+                      ...current,
+                      enabled: event.target.checked
+                    }))}
+                  />
+                  <span>
+                    <strong>Bật xác thực chấm công bằng Wi-Fi văn phòng (IP)</strong>
+                    <small> Khi nhân viên kết nối đúng Wi-Fi công ty đã đăng ký, hệ thống xác nhận ngay mà không cần bật GPS.</small>
+                  </span>
+                </label>
+
+                <label className="holiday-settings-check">
+                  <input
+                    type="checkbox"
+                    checked={wifiAttendance.requireWifi}
+                    disabled={!wifiAttendance.enabled}
+                    onChange={event => updateWifiSettings(current => ({
+                      ...current,
+                      requireWifi: event.target.checked
+                    }))}
+                  />
+                  <span>
+                    <strong>Bắt buộc kết nối đúng Wi-Fi văn phòng mới được Check-in / Check-out</strong>
+                    <small> Nếu bật, nhân viên dùng 4G hoặc mạng ngoài văn phòng sẽ không thể bấm chấm công online.</small>
+                  </span>
+                </label>
+              </div>
+
+              <div className="holiday-wifi-form-card">
+                <h3>{editingWifiId ? 'Cập nhật điểm Wi-Fi văn phòng' : 'Thêm điểm Wi-Fi văn phòng / bưu cục'}</h3>
+                <div className="holiday-wifi-form-grid">
+                  <label>
+                    <span>Tên điểm / Văn phòng *</span>
+                    <input
+                      type="text"
+                      value={wifiForm.name}
+                      onChange={event => setWifiForm(prev => ({ ...prev, name: event.target.value }))}
+                      placeholder="VD: Văn phòng Hà Nội (HAN)"
+                    />
+                  </label>
+                  <label>
+                    <span>Tên Wi-Fi (SSID hiển thị)</span>
+                    <input
+                      type="text"
+                      value={wifiForm.ssid}
+                      onChange={event => setWifiForm(prev => ({ ...prev, ssid: event.target.value }))}
+                      placeholder="VD: ECO_OFFICE_5G"
+                    />
+                  </label>
+                  <label className="holiday-wifi-form-grid__full">
+                    <span>Địa chỉ / Ghi chú</span>
+                    <input
+                      type="text"
+                      value={wifiForm.address}
+                      onChange={event => setWifiForm(prev => ({ ...prev, address: event.target.value }))}
+                      placeholder="VD: Bưu cục Hà Nội / TP.HCM"
+                    />
+                  </label>
+                  <label className="holiday-wifi-form-grid__full">
+                    <span>Danh sách IP Public hoặc prefix IPv6 (/48 đến /128) — mỗi dòng 1 mục *</span>
+                    <textarea
+                      rows={3}
+                      value={wifiForm.allowedIpsText}
+                      onChange={event => setWifiForm(prev => ({ ...prev, allowedIpsText: event.target.value }))}
+                      placeholder={'118.70.128.45\n2402:800:61c3:abcd::/64'}
+                    />
+                  </label>
+                </div>
+                <div className="holiday-wifi-form-actions">
+                  <label className="holiday-settings-check" style={{ marginTop: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={wifiForm.isActive}
+                      onChange={event => setWifiForm(prev => ({ ...prev, isActive: event.target.checked }))}
+                    />
+                    <span>Đang hoạt động</span>
+                  </label>
+                  <div className="holiday-wifi-form-btns">
+                    {editingWifiId && (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setEditingWifiId(null)
+                          setWifiForm(EMPTY_WIFI_FORM)
+                        }}
+                      >
+                        Hủy sửa
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-primary" onClick={handleUpsertWifiLocation}>
+                      <i className={`fas ${editingWifiId ? 'fa-check' : 'fa-plus'}`}></i>{' '}
+                      {editingWifiId ? 'Cập nhật điểm Wi-Fi' : 'Thêm điểm Wi-Fi'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="holiday-wifi-list">
+                <h3>Danh sách điểm Wi-Fi đã đăng ký ({wifiAttendance.locations.length})</h3>
+                {wifiAttendance.locations.length === 0 ? (
+                  <div className="holiday-settings-empty">
+                    Chưa có điểm Wi-Fi văn phòng nào. Hãy kết nối Wi-Fi công ty và bấm &ldquo;Lấy IP Wi-Fi hiện tại&rdquo;.
+                  </div>
+                ) : (
+                  wifiAttendance.locations.map(item => {
+                    const isCurrentMatch = networkInfo.matchedLocation?.id === item.id
+                    return (
+                      <div className={`holiday-wifi-item${isCurrentMatch ? ' is-matched' : ''}`} key={item.id}>
+                        <div className="holiday-wifi-item__info">
+                          <div className="holiday-wifi-item__head">
+                            <strong>{item.name}</strong>
+                            {item.ssid && <span className="holiday-wifi-badge">SSID: {item.ssid}</span>}
+                            <span className={`holiday-wifi-badge ${item.isActive ? 'is-active' : 'is-inactive'}`}>
+                              {item.isActive ? 'Đang bật' : 'Tạm tắt'}
+                            </span>
+                            {isCurrentMatch && (
+                              <span className="holiday-wifi-badge is-connected">
+                                <i className="fas fa-check-circle"></i> Đang kết nối
+                              </span>
+                            )}
+                          </div>
+                          {item.address && <p className="holiday-wifi-item__addr">{item.address}</p>}
+                          <div className="holiday-wifi-item__ips">
+                            {item.allowedIps.map(ip => (
+                              <code key={ip}>{ip}</code>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="holiday-wifi-item__actions">
+                          <button type="button" className="btn" onClick={() => handleEditWifiLocation(item)}>
+                            <i className="fas fa-pen"></i> Sửa
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-icon"
+                            title="Xóa điểm Wi-Fi"
+                            onClick={() => handleRemoveWifiLocation(item.id)}
+                          >
+                            <i className="fas fa-trash"></i>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
           )}
         </section>
       )}

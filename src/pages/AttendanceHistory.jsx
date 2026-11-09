@@ -84,13 +84,18 @@ const buildMapsUrl = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`
 
 const formatLocationLabel = location => {
   if (!location) return '—'
+  if (location.verificationMethod === 'wifi' || location.wifiLocationName) {
+    return location.address || `Wi-Fi: ${location.wifiLocationName || 'Văn phòng'}`
+  }
   if (location.error) {
     if (location.error === 'denied') return 'Không có vị trí (bị từ chối)'
     if (location.error === 'unsupported') return 'Thiết bị không hỗ trợ GPS'
     if (location.error === 'timeout') return 'Hết thời gian lấy vị trí'
     return 'Không lấy được vị trí'
   }
-  if (location.lat == null || location.lng == null) return '—'
+  if (location.lat == null || location.lng == null) {
+    return location.ip ? `IP: ${location.ip}` : '—'
+  }
   if (location.address) return location.address
   const lat = Number(location.lat).toFixed(5)
   const lng = Number(location.lng).toFixed(5)
@@ -98,7 +103,21 @@ const formatLocationLabel = location => {
 }
 
 const LocationCell = ({ location }) => {
-  if (!location || location.error || location.lat == null || location.lng == null) {
+  if (!location) {
+    return <span className="ah-loc ah-loc--empty">—</span>
+  }
+  if (location.verificationMethod === 'wifi' || location.wifiLocationName) {
+    return (
+      <div className="ah-loc">
+        <span>
+          <i className="fas fa-wifi" aria-hidden="true"></i> {formatLocationLabel(location)}
+        </span>
+        {location.ip ? <small>IP: {location.ip}</small> : null}
+        {location.device ? <small className="ah-loc__device">{location.device}</small> : null}
+      </div>
+    )
+  }
+  if (location.error || location.lat == null || location.lng == null) {
     return <span className="ah-loc ah-loc--empty">{formatLocationLabel(location)}</span>
   }
   const text = formatLocationLabel(location)
@@ -111,6 +130,7 @@ const LocationCell = ({ location }) => {
       {location.accuracy != null && Number.isFinite(Number(location.accuracy)) ? (
         <small>±{Math.round(Number(location.accuracy))}m</small>
       ) : null}
+      {location.ip ? <small>IP: {location.ip}</small> : null}
       {location.device ? <small className="ah-loc__device">{location.device}</small> : null}
     </div>
   )

@@ -1,4 +1,5 @@
 import { normalizeString } from './helpers.js'
+import { normalizeWifiAttendanceSettings } from './attendanceWifi.js'
 
 export const DEFAULT_ATTENDANCE_SHIFT = Object.freeze({
   name: 'Ca Hành chính',
@@ -123,6 +124,7 @@ export const normalizeAttendanceShiftSettings = (settings = {}) => {
       autoCalculate: overtimeSource.autoCalculate !== false
     },
     holidays,
+    wifiAttendance: normalizeWifiAttendanceSettings(source.wifiAttendance),
     shifts: {
       ...Object.fromEntries(
         (Array.isArray(storedShifts)
@@ -158,6 +160,7 @@ export const buildAttendanceShiftSettingsPayload = settings => {
     unpaidBreakMinutes: normalized.unpaidBreakMinutes,
     overtime: normalized.overtime,
     holidays: normalized.holidays,
+    wifiAttendance: normalized.wifiAttendance,
     shifts: normalized.shifts,
     // Giữ hai trường cũ để các bản triển khai chưa cập nhật vẫn đọc đúng ca hành chính.
     standardCheckIn: administrative.standardCheckIn,

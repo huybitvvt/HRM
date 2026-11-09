@@ -21,7 +21,7 @@ export const rebuildAttendanceMonthSummary = async (
   targetMonth,
   {
     companyId = getCompanyIdForUser(),
-    companyName = getCompanyNameForContext({ name: 'SpeeGo Logistics' })
+    companyName = getCompanyNameForContext({ name: 'Vận tải ECO' })
   } = {}
 ) => {
   const period = String(targetMonth || '').trim()
