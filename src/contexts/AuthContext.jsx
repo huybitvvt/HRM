@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { mapUserToApp } from '../utils/helpers'
+import {
+  authenticateWithEcoBackend,
+  consumeEcoSsoFromLocation,
+  isEcoSsoDisabled,
+  readStoredEcoUser,
+  setEcoSsoDisabled,
+  syncEcoUserToHrmProfile
+} from '../utils/ecoAuthSync'
 
 const AuthContext = createContext(null)
 const LOCAL_SESSION_KEY = 'hrmspeego.accountSession'
@@ -55,7 +63,17 @@ const refreshAccountProfile = async storedProfile => {
     .maybeSingle()
   if (error) throw error
   const profile = profileFromAccount(data)
-  return profile || storedProfile
+  if (!profile) return storedProfile
+  if (storedProfile.ecoUserId) {
+    return {
+      ...profile,
+      ho_va_ten: storedProfile.ho_va_ten || profile.ho_va_ten,
+      role: storedProfile.role === 'admin' ? 'admin' : profile.role,
+      vi_tri: storedProfile.vi_tri || profile.vi_tri,
+      ecoUserId: storedProfile.ecoUserId
+    }
+  }
+  return profile
 }
 
 export function AuthProvider({ children }) {
@@ -66,6 +84,9 @@ export function AuthProvider({ children }) {
     let active = true
     const syncSession = async (session) => {
       try {
+        consumeEcoSsoFromLocation()
+        const ecoUser = !isEcoSsoDisabled() ? readStoredEcoUser() : null
+
         if (session?.user) {
           const profile = await loadProfile(session.user)
           if (!active) return
@@ -73,7 +94,19 @@ export function AuthProvider({ children }) {
           setUser(profile)
           return
         }
+
         const storedProfile = readLocalSession()
+        const ecoUserId = ecoUser ? String(ecoUser.id || ecoUser.username || ecoUser.email || '').trim() : ''
+
+        if (ecoUser && ecoUserId && (!storedProfile || storedProfile.ecoUserId !== ecoUserId)) {
+          const syncedEcoProfile = await syncEcoUserToHrmProfile(ecoUser, supabase)
+          if (syncedEcoProfile && active) {
+            writeLocalSession(syncedEcoProfile)
+            setUser(syncedEcoProfile)
+            return
+          }
+        }
+
         if (storedProfile && active) {
           try {
             const currentProfile = await refreshAccountProfile(storedProfile)
@@ -81,7 +114,7 @@ export function AuthProvider({ children }) {
             writeLocalSession(currentProfile)
             setUser(currentProfile)
           } catch (error) {
-            console.warn('KhÃ´ng lÃ m má»›i Ä‘Æ°á»£c há»“ sÆ¡ tÃ i khoáº£n, dÃ¹ng dá»¯ liá»‡u Ä‘Ã£ lÆ°u:', error)
+            console.warn('Không làm mới được hồ sơ tài khoản, dùng dữ liệu đã lưu:', error)
             if (active) setUser(storedProfile)
           }
         } else if (active) {
@@ -116,6 +149,22 @@ export function AuthProvider({ children }) {
     return profile
   }
 
+  const loginWithEcoSession = async (explicitEcoUser = null) => {
+    const ecoUser = explicitEcoUser || readStoredEcoUser()
+    if (!ecoUser) {
+      throw new Error('Chưa tìm thấy phiên đăng nhập Vận tải ECO trên trình duyệt này.')
+    }
+    setEcoSsoDisabled(false)
+    await supabase.auth.signOut().catch(() => {})
+    const profile = await syncEcoUserToHrmProfile(ecoUser, supabase)
+    if (!profile) {
+      throw new Error('Không thể đồng bộ hồ sơ tài khoản Vận tải ECO.')
+    }
+    writeLocalSession(profile)
+    setUser(profile)
+    return profile
+  }
+
   const login = async (account, password) => {
     const cleanAccount = String(account || '').trim()
     const cleanPassword = String(password || '').trim()
@@ -123,21 +172,14 @@ export function AuthProvider({ children }) {
       throw new Error(INVALID_LOGIN)
     }
 
+    setEcoSsoDisabled(false)
+
     const { data, error } = await supabase.rpc('login_with_account', {
       p_account: cleanAccount,
       p_password: cleanPassword
     })
 
-    if (error) {
-      const message = String(error.message || '')
-      if (/login_with_account|schema cache|could not find the function/i.test(message)) {
-        throw new Error('Chưa bật hàm đăng nhập trên database. Hãy chạy file supabase/migrations/20261001160000_login_with_account.sql trong SQL Editor.')
-      }
-      if (cleanAccount.includes('@')) return loginWithSupabaseAuth(cleanAccount, cleanPassword)
-      throw new Error(INVALID_LOGIN)
-    }
-
-    if (data?.password_matched) {
+    if (!error && data?.password_matched) {
       const email = String(data.email || '').trim()
       const hasLinkedAuthAccount = Boolean(data.auth_user_id)
       if (email && hasLinkedAuthAccount) {
@@ -165,6 +207,21 @@ export function AuthProvider({ children }) {
       return profile
     }
 
+    // Thử xác thực đồng bộ qua tài khoản hệ thống Vận tải ECO (/api/v1/auth/login)
+    try {
+      const ecoUser = await authenticateWithEcoBackend(cleanAccount, cleanPassword)
+      if (ecoUser) {
+        return await loginWithEcoSession(ecoUser)
+      }
+    } catch (ecoErr) {
+      console.warn('Không xác thực được qua API ECO:', ecoErr)
+    }
+
+    if (error) {
+      if (cleanAccount.includes('@')) return loginWithSupabaseAuth(cleanAccount, cleanPassword)
+      throw new Error(INVALID_LOGIN)
+    }
+
     const email = String(data?.email || (cleanAccount.includes('@') ? cleanAccount : '')).trim()
     if (!email) throw new Error(INVALID_LOGIN)
     try {
@@ -175,12 +232,17 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
+    setEcoSsoDisabled(true)
     writeLocalSession(null)
     await supabase.auth.signOut()
     setUser(null)
   }
 
-  return <AuthContext.Provider value={{ user, login, logout, loading }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ user, login, loginWithEcoSession, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export const useAuth = () => useContext(AuthContext)

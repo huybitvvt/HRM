@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { readStoredEcoUser } from '../utils/ecoAuthSync'
 import { getEcoAppUrl } from '../utils/ecoLink'
 import { isAccountingUser, isCoreStaffUser } from '../utils/staffAccess'
 import './Login.css'
@@ -11,10 +12,55 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const { login } = useAuth()
+  const { user, login, loginWithEcoSession } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from?.pathname || '/'
+  const storedEcoUser = readStoredEcoUser()
+
+  const navigateAfterLogin = profile => {
+    if (isAccountingUser(profile) && !isCoreStaffUser(profile)) {
+      const target = ['/bang-cong-preview', '/holiday-settings', '/cham-cong-online'].includes(from)
+        ? from
+        : '/bang-cong-preview'
+      navigate(target, { replace: true })
+      return true
+    }
+    if (profile?.role === 'user') {
+      const target = ['/bang-cong-preview', '/cham-cong-online', '/lich-su-cham-cong'].includes(from)
+        ? from
+        : '/cham-cong-online'
+      navigate(target, { replace: true })
+      return true
+    }
+    if (isCoreStaffUser(profile)) {
+      const target = ['/', '/login'].includes(from) ? '/employees' : from
+      navigate(target, { replace: true })
+      return true
+    }
+    return false
+  }
+
+  useEffect(() => {
+    if (user) {
+      navigateAfterLogin(user)
+    }
+  }, [user])
+
+  const handleEcoQuickLogin = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const profile = await loginWithEcoSession()
+      if (!navigateAfterLogin(profile)) {
+        setError('Tài khoản chưa được cấp quyền sử dụng hệ thống.')
+      }
+    } catch (err) {
+      setError(err?.message || 'Không thể đồng bộ phiên đăng nhập Vận tải ECO.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleLogin = async event => {
     event.preventDefault()
@@ -22,28 +68,14 @@ function Login() {
     setLoading(true)
     try {
       const profile = await login(account.trim(), password.trim())
-      if (isAccountingUser(profile) && !isCoreStaffUser(profile)) {
-        const target = ['/bang-cong-preview', '/holiday-settings', '/cham-cong-online'].includes(from)
-          ? from
-          : '/bang-cong-preview'
-        navigate(target, { replace: true })
-        return
+      if (!navigateAfterLogin(profile)) {
+        setError('Tài khoản chưa được cấp quyền sử dụng hệ thống.')
       }
-      if (profile?.role === 'user') {
-        navigate(from === '/bang-cong-preview' ? from : '/bang-cong', { replace: true })
-        return
-      }
-      if (isCoreStaffUser(profile)) {
-        const target = ['/', '/bang-cong', '/cham-cong-online'].includes(from) ? '/employees' : from
-        navigate(target, { replace: true })
-        return
-      }
-      setError('Tài khoản chưa được cấp quyền sử dụng hệ thống.')
     } catch (loginError) {
       console.error('Login error:', loginError)
       const msg = loginError?.message || ''
       if (msg.includes('Invalid login credentials') || msg.includes('Tên tài khoản hoặc mật khẩu')) {
-        setError('Tên tài khoản hoặc mật khẩu không chính xác. Hãy kiểm tra lại mật khẩu (chú ý tắt tự động điền mật khẩu cũ).')
+        setError('Tên tài khoản hoặc mật khẩu không chính xác. Bạn có thể đăng nhập bằng tài khoản Vận tải ECO hoặc mã nhân viên HRM.')
       } else if (msg) {
         setError(msg)
       } else {
@@ -61,15 +93,42 @@ function Login() {
           <div className="system-login__intro">
             <img src="/logo-express-exacting.png" alt="ECO Transport" />
             <h1>Đăng nhập hệ thống</h1>
-            <p>Hệ thống Nhân sự &amp; Chấm công — Vận tải ECO</p>
+            <p>Hệ thống Nhân sự &amp; Chấm công — Đồng bộ tài khoản Vận tải ECO</p>
           </div>
 
           {error && <div className="system-login__error"><i className="fas fa-exclamation-circle"></i><span>{error}</span></div>}
 
+          {storedEcoUser && (
+            <button
+              type="button"
+              onClick={handleEcoQuickLogin}
+              disabled={loading}
+              style={{
+                width: '100%',
+                marginBottom: '16px',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                border: '1px solid #bfdbfe',
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                fontWeight: 700,
+                fontSize: '0.92rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <i className="fas fa-user-check"></i>
+              Tiếp tục với tài khoản ECO: {storedEcoUser.full_name || storedEcoUser.username || storedEcoUser.email}
+            </button>
+          )}
+
           <form onSubmit={handleLogin}>
             <label className="system-login__field">
-              <span>Tên tài khoản</span>
-              <div><i className="fas fa-user"></i><input type="text" value={account} onChange={event => setAccount(event.target.value)} placeholder="Tên đăng nhập" autoComplete="username" required /></div>
+              <span>Tài khoản Vận tải ECO / Mã nhân viên</span>
+              <div><i className="fas fa-user"></i><input type="text" value={account} onChange={event => setAccount(event.target.value)} placeholder="Email / Tên đăng nhập ECO hoặc Mã NV" autoComplete="username" required /></div>
             </label>
             <label className="system-login__field">
               <span>Mật khẩu</span>

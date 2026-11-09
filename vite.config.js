@@ -23,10 +23,10 @@ const attendanceNetworkDevPlugin = () => ({
 })
 
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [react(), attendanceNetworkDevPlugin()],
   server: {
     port: 3000,
     open: true
   }
 })
-

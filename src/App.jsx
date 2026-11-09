@@ -29,9 +29,14 @@ const AppLayout = () => <Layout><ErrorBoundary><Outlet /></ErrorBoundary></Layou
 const STAFF_ROLES = [...CORE_STAFF_ROLES]
 const ATTENDANCE_ROLES = ['user', ...STAFF_ROLES]
 
+const getRouterBasename = () => {
+  if (typeof window === 'undefined') return undefined
+  return /^\/hrm(\/|$)/i.test(window.location.pathname) ? '/hrm' : undefined
+}
+
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getRouterBasename()}>
       <Suspense fallback={<LoadingSpinner />}>
         <Routes>
           <Route path="/login" element={<Login />} />

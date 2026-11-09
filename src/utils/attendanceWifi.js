@@ -365,6 +365,32 @@ export const fetchCurrentNetworkStatus = async (wifiSettings = {}, options = {})
     }
   }
 
+  if (!detectedIp || !isPublicIp(detectedIp)) {
+    const publicIpEndpoints = [
+      'https://api64.ipify.org?format=json',
+      'https://api.ipify.org?format=json'
+    ]
+    for (const endpoint of publicIpEndpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        })
+        if (res.ok) {
+          const json = await res.json()
+          const candidate = normalizeIp(json?.ip)
+          if (candidate && isPublicIp(candidate)) {
+            detectedIp = candidate
+            break
+          }
+        }
+      } catch {
+        // Ignore fallback failure
+      }
+    }
+  }
+
   return evaluateWifiAttendance({ ip: detectedIp }, wifiSettings)
 }
 
